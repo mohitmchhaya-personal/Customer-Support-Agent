@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  /* SpreadBliss design tokens */
+  --sb-ink: #111111;
+  --sb-white: #ffffff;
+  --sb-blue: #2563eb;
+  --sb-gold: #b08d57;
+
+  --background: var(--sb-white);
+  --foreground: var(--sb-ink);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-sb-ink: var(--sb-ink);
+  --color-sb-white: var(--sb-white);
+  --color-sb-blue: var(--sb-blue);
+  --color-sb-gold: var(--sb-gold);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
