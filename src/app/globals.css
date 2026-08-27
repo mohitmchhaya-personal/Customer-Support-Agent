@@ -7,6 +7,13 @@
   --sb-blue: #2563eb;
   --sb-gold: #b08d57;
 
+  --sb-canvas: #f6f7f9;
+  --sb-muted: #5b6472;
+  --sb-line: #e4e7ec;
+  --sb-blue-strong: #1d4ed8;
+  --sb-blue-soft: #e7edfd;
+  --sb-gold-soft: #f2ead9;
+
   --background: var(--sb-white);
   --foreground: var(--sb-ink);
 }
@@ -18,6 +25,15 @@
   --color-sb-white: var(--sb-white);
   --color-sb-blue: var(--sb-blue);
   --color-sb-gold: var(--sb-gold);
+  --color-canvas: var(--sb-canvas);
+  --color-ink: var(--sb-ink);
+  --color-muted: var(--sb-muted);
+  --color-line: var(--sb-line);
+  --color-brand: var(--sb-blue);
+  --color-brand-strong: var(--sb-blue-strong);
+  --color-brand-soft: var(--sb-blue-soft);
+  --color-gold: var(--sb-gold);
+  --color-gold-soft: var(--sb-gold-soft);
   --font-sans: var(--font-inter);
 }
 
