@@ -5,7 +5,7 @@ export function EscalationCard({
   email,
   reference,
 }: {
-  email: string;
+  email: string | null;
   reference: string;
 }) {
   return (
@@ -28,10 +28,12 @@ export function EscalationCard({
           <dt className="text-muted">Reference</dt>
           <dd className="font-mono font-semibold text-ink">{reference}</dd>
         </div>
-        <div className="flex items-center justify-between py-2.5">
-          <dt className="text-muted">We&apos;ll email</dt>
-          <dd className="font-semibold text-ink">{maskEmail(email)}</dd>
-        </div>
+        {email ? (
+          <div className="flex items-center justify-between py-2.5">
+            <dt className="text-muted">We&apos;ll email</dt>
+            <dd className="font-semibold text-ink">{maskEmail(email)}</dd>
+          </div>
+        ) : null}
       </dl>
     </div>
   );
