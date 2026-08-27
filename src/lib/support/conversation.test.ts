@@ -219,6 +219,22 @@ describe("conversationReducer", () => {
     expect(state.messages.some((m) => m.kind === "email-form")).toBe(false);
   });
 
+  it("removes a pending email form when a new question is submitted", () => {
+    const state = run([
+      SUBMIT,
+      ACCEPTED,
+      {
+        type: "result",
+        response: { status: "needs_email", message: "Please share an email." },
+      },
+      { type: "submit", text: "A different question" },
+    ]);
+    expect(state.status).toBe("processing");
+    expect(state.messages.some((m) => m.kind === "email-form")).toBe(false);
+    expect(state.question).toBe("A different question");
+    expect(state.ticketId).toBeNull();
+  });
+
   it("resets back to the welcome state", () => {
     const state = run([SUBMIT, { type: "reset" }]);
     expect(state.status).toBe("welcome");

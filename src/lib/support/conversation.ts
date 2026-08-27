@@ -75,7 +75,9 @@ export function conversationReducer(
         executionId: null,
         email: null,
         messages: [
-          ...withoutTransient(state.messages),
+          ...withoutTransient(state.messages).filter(
+            (m) => m.kind !== "email-form",
+          ),
           { id: createId(), role: "customer", kind: "text", text },
           typing(),
         ],

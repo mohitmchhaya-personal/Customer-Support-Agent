@@ -120,6 +120,24 @@ describe("SupportChat", () => {
     expect(window.localStorage.length).toBe(0);
   });
 
+  it("removes a pending email form when a new question is submitted", async () => {
+    const client = new MockSupportApiClient();
+    const { user } = await submitToNeedsEmail(client);
+    client.enqueueExecution([ANSWERED]);
+
+    await user.type(
+      screen.getByLabelText(/type your question/i),
+      "How do I manage my account?{Enter}",
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/based on:/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByLabelText(/email address/i)).not.toBeInTheDocument();
+    expect(client.submissions).toHaveLength(2);
+    expect(client.submissions[1].request.customerEmail).toBeUndefined();
+    expect(client.submissions[1].request.ticketId).toBeUndefined();
+  });
+
   it("shows the customer-safe error state and recovers on retry", async () => {
     const client = new MockSupportApiClient()
       .failNextSubmit()

@@ -171,7 +171,7 @@ export function SupportChat({
   function handleEmailSubmit(email: string) {
     const question = state.question;
     const ticketId = state.ticketId;
-    if (!question || busy) return;
+    if (!question || busy || state.status !== "needs_email") return;
     const controller = beginRun();
     if (!controller) return;
     dispatch({ type: "submit_email", email });
