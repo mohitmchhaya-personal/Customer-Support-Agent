@@ -9,7 +9,7 @@ export function EscalationCard({
   reference: string;
 }) {
   return (
-    <div className="ml-11 max-w-[78%] overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
+    <div className="ml-11 max-w-[78%] shrink-0 overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
       <div className="flex items-center gap-2 border-b border-line bg-canvas/60 px-4 py-2.5">
         <CheckIcon className="h-4 w-4 text-brand" />
         <span className="text-[13px] font-semibold text-ink">

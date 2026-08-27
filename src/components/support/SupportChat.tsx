@@ -77,7 +77,7 @@ export function SupportChat({
       <div
         ref={scrollRef}
         aria-live="polite"
-        className="flex max-h-[520px] min-h-[340px] flex-col gap-5 overflow-y-auto p-5 sm:p-7"
+        className="flex max-h-[520px] min-h-[340px] flex-col gap-5 overflow-y-auto p-5 sm:p-7 [&>*]:shrink-0"
       >
         {state.messages.map((m) => {
           if (m.kind === "typing") return <TypingIndicator key={m.id} />;

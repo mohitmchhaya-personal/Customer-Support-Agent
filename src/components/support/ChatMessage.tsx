@@ -38,7 +38,7 @@ export function ChatMessageBubble({
       >
         <div
           className={[
-            "rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed",
+            "whitespace-pre-line rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed",
             isSupport
               ? "rounded-tl-md border border-line bg-white text-ink"
               : "rounded-tr-md bg-brand text-white",
