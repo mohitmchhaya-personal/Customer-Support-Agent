@@ -19,11 +19,11 @@ export function Avatar({ role }: { role: "support" | "customer" }) {
 export function ChatMessageBubble({
   role,
   children,
-  source,
+  sources,
 }: {
   role: "support" | "customer";
   children: ReactNode;
-  source?: string;
+  sources?: string[];
 }) {
   const isSupport = role === "support";
   return (
@@ -46,10 +46,10 @@ export function ChatMessageBubble({
         >
           {children}
         </div>
-        {source ? (
+        {sources && sources.length > 0 ? (
           <p className="flex items-center gap-1.5 px-1 text-[12px] text-muted">
             <BookIcon className="h-3.5 w-3.5 text-gold" />
-            Based on: {source}
+            Based on: {sources.join(" · ")}
           </p>
         ) : null}
       </div>

@@ -1,38 +1,72 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import {
+  HttpSupportApiClient,
+  type SupportApiClient,
+} from "@/lib/support/api-client";
+import type { SubmitMessageRequest } from "@/lib/support/api-contract";
 import {
   SUGGESTED_QUESTIONS,
-  dismissEmailForm,
+  conversationReducer,
   initialState,
-  receiveError,
-  receiveReply,
-  resetConversation,
-  retryQuestion,
-  submitEmail,
-  submitQuestion,
 } from "@/lib/support/conversation";
-import { MockSupportService, type SupportService } from "@/lib/support/service";
-import type { ConversationState } from "@/lib/support/types";
 import { ChatMessageBubble } from "./ChatMessage";
 import { EscalationCard } from "./EscalationCard";
 import { ErrorMessage } from "./ErrorMessage";
 import { InlineEmailForm } from "./InlineEmailForm";
 import { MessageComposer } from "./MessageComposer";
+import { StillWorkingNotice } from "./StillWorkingNotice";
 import { SuggestionChip } from "./SuggestionChip";
 import { TypingIndicator } from "./TypingIndicator";
 
-const defaultService = new MockSupportService();
+const DEFAULT_POLL_INTERVAL_MS = 1500;
+const DEFAULT_MAX_POLL_ATTEMPTS = 20;
+
+const defaultClient = new HttpSupportApiClient();
+
+function createSessionId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `s-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      },
+      { once: true },
+    );
+  });
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
 
 export function SupportChat({
-  service = defaultService,
+  client = defaultClient,
+  pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+  maxPollAttempts = DEFAULT_MAX_POLL_ATTEMPTS,
 }: {
-  service?: SupportService;
+  client?: SupportApiClient;
+  pollIntervalMs?: number;
+  maxPollAttempts?: number;
 }) {
-  const [state, setState] = useState<ConversationState>(initialState);
+  const [state, dispatch] = useReducer(conversationReducer, undefined, () =>
+    initialState(),
+  );
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const conversationEpoch = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
+  const sessionIdRef = useRef<string | null>(null);
 
   const busy = state.status === "processing";
   const hasCustomerMessage = state.messages.some((m) => m.role === "customer");
@@ -41,43 +75,142 @@ export function SupportChat({
     !busy && state.messages.some((m) => m.kind === "escalation");
 
   useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
     const el = scrollRef.current;
     if (el && typeof el.scrollTo === "function") {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
   }, [state.messages]);
 
-  async function send(raw: string, { isRetry = false } = {}) {
-    const text = raw.trim();
-    if (!text || busy) return;
+  function getSessionId(): string {
+    if (!sessionIdRef.current) {
+      sessionIdRef.current = createSessionId();
+    }
+    return sessionIdRef.current;
+  }
 
-    const epoch = conversationEpoch.current;
-    setInput("");
-    setState((prev) =>
-      isRetry ? retryQuestion(prev) : submitQuestion(prev, text),
-    );
+  function beginRun(): AbortController | null {
+    if (inFlightRef.current) return null;
+    inFlightRef.current = true;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    return controller;
+  }
 
-    try {
-      const reply = await service.submitMessage(text);
-      if (epoch !== conversationEpoch.current) return;
-      setState((prev) => receiveReply(prev, reply));
-    } catch {
-      if (epoch !== conversationEpoch.current) return;
-      setState((prev) => receiveError(prev, text));
+  function endRun(controller: AbortController) {
+    if (abortRef.current === controller) {
+      inFlightRef.current = false;
     }
   }
 
+  async function pollExecution(executionId: string, controller: AbortController) {
+    for (let attempt = 0; attempt < maxPollAttempts; attempt++) {
+      await delay(pollIntervalMs, controller.signal);
+      const result = await client.getExecution(executionId, controller.signal);
+      if (controller.signal.aborted) return;
+      if (result.status !== "processing") {
+        dispatch({ type: "result", response: result });
+        return;
+      }
+    }
+    dispatch({ type: "still_working" });
+  }
+
+  async function runSubmission(
+    request: SubmitMessageRequest,
+    controller: AbortController,
+  ) {
+    try {
+      const ack = await client.submitMessage(request, controller.signal);
+      if (controller.signal.aborted) return;
+      dispatch({
+        type: "accepted",
+        ticketId: ack.ticketId,
+        executionId: ack.executionId,
+      });
+      await pollExecution(ack.executionId, controller);
+    } catch (error) {
+      if (isAbortError(error) || controller.signal.aborted) return;
+      dispatch({ type: "request_failed" });
+    } finally {
+      endRun(controller);
+    }
+  }
+
+  function send(raw: string) {
+    const text = raw.trim();
+    if (!text || busy) return;
+    const controller = beginRun();
+    if (!controller) return;
+    setInput("");
+    dispatch({ type: "submit", text });
+    void runSubmission({ message: text, sessionId: getSessionId() }, controller);
+  }
+
+  function retry() {
+    const question = state.question;
+    if (!question || busy) return;
+    const controller = beginRun();
+    if (!controller) return;
+    dispatch({ type: "retry" });
+    const request: SubmitMessageRequest = {
+      message: question,
+      sessionId: getSessionId(),
+    };
+    if (state.ticketId) request.ticketId = state.ticketId;
+    if (state.email) request.customerEmail = state.email;
+    void runSubmission(request, controller);
+  }
+
   function handleEmailSubmit(email: string) {
-    setState((prev) => submitEmail(prev, email));
+    const question = state.question;
+    const ticketId = state.ticketId;
+    if (!question || busy) return;
+    const controller = beginRun();
+    if (!controller) return;
+    dispatch({ type: "submit_email", email });
+    const request: SubmitMessageRequest = {
+      message: question,
+      sessionId: getSessionId(),
+      customerEmail: email,
+    };
+    if (ticketId) request.ticketId = ticketId;
+    void runSubmission(request, controller);
+  }
+
+  function handleCheckAgain() {
+    const executionId = state.executionId;
+    if (!executionId || state.status !== "still_working") return;
+    const controller = beginRun();
+    if (!controller) return;
+    dispatch({ type: "resume_polling" });
+    void (async () => {
+      try {
+        await pollExecution(executionId, controller);
+      } catch (error) {
+        if (isAbortError(error) || controller.signal.aborted) return;
+        dispatch({ type: "request_failed" });
+      } finally {
+        endRun(controller);
+      }
+    })();
   }
 
   function handleDismissEmailForm() {
-    setState((prev) => dismissEmailForm(prev));
+    dispatch({ type: "dismiss_email_form" });
   }
 
   function reset() {
-    conversationEpoch.current += 1;
-    setState(resetConversation());
+    abortRef.current?.abort();
+    inFlightRef.current = false;
+    sessionIdRef.current = null;
+    dispatch({ type: "reset" });
     setInput("");
   }
 
@@ -90,9 +223,13 @@ export function SupportChat({
       >
         {state.messages.map((m) => {
           if (m.kind === "typing") return <TypingIndicator key={m.id} />;
+          if (m.kind === "still-working")
+            return (
+              <StillWorkingNotice key={m.id} onCheckAgain={handleCheckAgain} />
+            );
           if (m.kind === "grounded")
             return (
-              <ChatMessageBubble key={m.id} role="support" source={m.source}>
+              <ChatMessageBubble key={m.id} role="support" sources={m.sources}>
                 {m.text}
               </ChatMessageBubble>
             );
@@ -119,12 +256,7 @@ export function SupportChat({
               />
             );
           if (m.kind === "error")
-            return (
-              <ErrorMessage
-                key={m.id}
-                onRetry={() => send(m.retry, { isRetry: true })}
-              />
-            );
+            return <ErrorMessage key={m.id} onRetry={retry} />;
           return null;
         })}
 
@@ -158,7 +290,7 @@ export function SupportChat({
         value={input}
         onChange={setInput}
         onSend={() => send(input)}
-        disabled={busy}
+        disabled={busy || state.status === "still_working"}
       />
     </div>
   );
