@@ -4,7 +4,7 @@ Read this file before every task. Inspect existing files before modifying them.
 
 ## Project Purpose
 
-Build a standalone proof-of-concept SpreadBliss Help & Contact page consisting of:
+A standalone proof-of-concept SpreadBliss Help & Contact page, implemented and deployed to Vercel (production: https://customer-support-agent-sand.vercel.app). It consists of:
 
 - A customer-support chatbot UI.
 - Server-side integration with a Lyzr SuperFlow.
@@ -14,6 +14,16 @@ Build a standalone proof-of-concept SpreadBliss Help & Contact page consisting o
 - A separate asynchronous Lyzr Human Review SuperFlow that sends the reviewed outcome by email.
 
 This is a **standalone page**. Do NOT integrate it with the existing SpreadBliss application, repositories, authentication, profiles, navigation, or backend.
+
+## Current Architecture
+
+- `/help` (root `/` redirects to it) renders the support chat UI (`src/components/support`, entry point `SupportChat.tsx`).
+- `POST /api/support/messages` validates the request, mints or verifies a session-bound HMAC ticket ID (`src/lib/support/ticket.ts`), triggers the Lyzr Chat Response SuperFlow, and returns `202` with `{ status: "processing", ticketId, executionId }`.
+- `GET /api/support/executions/[executionId]` fetches the Lyzr execution and maps it to a public status via `src/lib/lyzr/adapter.ts`; the UI polls this endpoint.
+- Route Handler logic lives in `src/lib/api/support` as dependency-injected factories for testability; the `src/app/api` routes are thin wrappers.
+- `src/lib/lyzr` is server-only (enforced by `server-only.ts`): client, config (`LYZR_API_KEY`, `LYZR_CHAT_WORKFLOW_ID`, optional `LYZR_API_BASE_URL`), errors, and adapter.
+- The frontend talks only to the normalized internal contract in `src/lib/support/api-contract.ts` through `HttpSupportApiClient` (`src/lib/support/api-client.ts`).
+- Escalation is fire-and-forget: after email collection, the Human Review SuperFlow runs asynchronously in Lyzr and emails the customer; the app never waits for it.
 
 ## Target Stack
 
@@ -31,7 +41,8 @@ This is a **standalone page**. Do NOT integrate it with the existing SpreadBliss
 
 - Use a single Next.js project for the proof of concept.
 - Do NOT create a NestJS application.
-- Do NOT introduce a database, authentication system, AWS services, queues, Docker, Terraform, or deployment infrastructure.
+- Do NOT introduce a database, authentication system, AWS services, queues, Docker, or Terraform.
+- Hosting is Vercel (production builds from `main`, with Lyzr credentials set as Vercel project environment variables). Do NOT add other deployment infrastructure.
 - Never expose the Lyzr API key or webhook secrets in browser code.
 - Do NOT create environment variables beginning with `NEXT_PUBLIC_` for Lyzr credentials.
 - All Lyzr communication must go through server-side Route Handlers.
@@ -94,7 +105,7 @@ When asked to implement the Figma design:
 
 ## Expected Commands
 
-Once scaffolding exists, all implementation PRs must run:
+All implementation PRs must run:
 
 ```bash
 npm run lint
@@ -108,6 +119,8 @@ UI integration PRs must also run:
 ```bash
 npm run test:e2e
 ```
+
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, unit tests, and build on every push to `main` and every pull request.
 
 ## Change Discipline
 
