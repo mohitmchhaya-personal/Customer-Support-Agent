@@ -1,3 +1,4 @@
+import { EXECUTION_ID_PATTERN } from "@/lib/support/validation";
 import { getLyzrConfig, type LyzrConfig } from "./config";
 import {
   LyzrMalformedResponseError,
@@ -10,6 +11,16 @@ import type { LyzrExecuteAck, LyzrExecution } from "./types";
 assertServerOnly("lyzr/client");
 
 export const DEFAULT_LYZR_TIMEOUT_MS = 15_000;
+
+const KNOWN_ACK_STATUSES = new Set([
+  "running",
+  "pending",
+  "queued",
+  "paused",
+  "processing",
+  "success",
+  "completed",
+]);
 
 export interface LyzrWorkflowInput {
   message: string;
@@ -54,8 +65,9 @@ export class LyzrClient {
       typeof payload !== "object" ||
       payload === null ||
       typeof (payload as LyzrExecuteAck).execution_id !== "string" ||
-      (payload as LyzrExecuteAck).execution_id.length === 0 ||
-      typeof (payload as LyzrExecuteAck).status !== "string"
+      !EXECUTION_ID_PATTERN.test((payload as LyzrExecuteAck).execution_id) ||
+      typeof (payload as LyzrExecuteAck).status !== "string" ||
+      !KNOWN_ACK_STATUSES.has((payload as LyzrExecuteAck).status.toLowerCase())
     ) {
       throw new LyzrMalformedResponseError();
     }

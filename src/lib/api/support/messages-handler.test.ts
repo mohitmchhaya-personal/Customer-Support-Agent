@@ -6,6 +6,7 @@ import {
   LyzrTimeoutError,
   LyzrUpstreamError,
 } from "@/lib/lyzr/errors";
+import { deriveTicketId } from "@/lib/support/ticket";
 import { createMessagesHandler } from "./messages-handler";
 
 function makeRequest(
@@ -38,7 +39,7 @@ describe("POST /api/support/messages", () => {
     }));
     const handler = createMessagesHandler({
       getClient: fakeClient(executeWorkflow),
-      generateTicketId: () => "SB-FIXED123",
+      deriveTicketId: () => "SB-FIXED123",
     });
 
     const response = await handler(makeRequest(validBody));
@@ -56,11 +57,12 @@ describe("POST /api/support/messages", () => {
     });
   });
 
-  it("passes through a supplied ticket ID and optional fields", async () => {
+  it("accepts a supplied ticket ID matching the session and maps optional fields", async () => {
     const executeWorkflow = vi.fn(async () => ({
       execution_id: "exec_abc12345",
       status: "running",
     }));
+    const sessionTicket = deriveTicketId("sess_123");
     const handler = createMessagesHandler({
       getClient: fakeClient(executeWorkflow),
     });
@@ -70,18 +72,52 @@ describe("POST /api/support/messages", () => {
         ...validBody,
         customerName: "Ada",
         customerEmail: "ada@example.com",
-        ticketId: "SB-EXISTING1",
+        ticketId: sessionTicket,
       }),
     );
 
     expect(response.status).toBe(202);
-    expect(await response.json()).toMatchObject({ ticketId: "SB-EXISTING1" });
+    expect(await response.json()).toMatchObject({ ticketId: sessionTicket });
     expect(executeWorkflow).toHaveBeenCalledWith({
       message: "How do I create a profile?",
       customer_name: "Ada",
       customer_email: "ada@example.com",
       session_id: "sess_123",
-      ticket_id: "SB-EXISTING1",
+      ticket_id: sessionTicket,
+    });
+  });
+
+  it("rejects a well-formed ticket ID that does not belong to the session", async () => {
+    const executeWorkflow = vi.fn();
+    const handler = createMessagesHandler({
+      getClient: fakeClient(executeWorkflow),
+    });
+
+    const response = await handler(
+      makeRequest({ ...validBody, ticketId: "SB-FORGED99" }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Ticket identifier is not valid.",
+    });
+    expect(executeWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("always uses the session-derived ticket ID for initial submissions", async () => {
+    const executeWorkflow = vi.fn(async () => ({
+      execution_id: "exec_abc12345",
+      status: "running",
+    }));
+    const handler = createMessagesHandler({
+      getClient: fakeClient(executeWorkflow),
+    });
+
+    const response = await handler(makeRequest(validBody));
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      ticketId: deriveTicketId("sess_123"),
     });
   });
 

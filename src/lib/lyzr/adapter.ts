@@ -14,13 +14,21 @@ const IN_PROGRESS_STATUSES = new Set(["running", "paused", "pending", "queued"])
 const COMPLETED_STATUSES = new Set(["success", "completed"]);
 const FAILED_STATUSES = new Set(["failed", "cancelled", "error"]);
 
-const TERMINAL_ITEM_STATUSES = new Set([
-  "answered",
-  "needs_email",
+/**
+ * Terminal item statuses in precedence order. When a completed execution
+ * contains conflicting terminal-looking items across nodes, the most
+ * conservative outcome wins so a stray "answered" item in a non-terminal
+ * node can never surface raw output over a real escalation.
+ */
+const TERMINAL_STATUS_PRECEDENCE = [
   "awaiting_human_review",
   "acknowledged",
   "escalated",
-]);
+  "needs_email",
+  "answered",
+] as const;
+
+const TERMINAL_ITEM_STATUSES = new Set<string>(TERMINAL_STATUS_PRECEDENCE);
 
 export const NEEDS_EMAIL_MESSAGE =
   "I've received your question, but it needs review by our support team. Please provide your email address so we can send you the outcome.";
@@ -33,6 +41,7 @@ export const FAILED_MESSAGE =
 
 const MAX_SOURCES = 5;
 const MAX_SOURCE_LABEL_LENGTH = 200;
+const MAX_ANSWER_LENGTH = 4000;
 
 function sanitizeText(value: unknown, maxLength: number): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -73,6 +82,7 @@ function findTerminalItem(
   const outputs = execution.outputs;
   if (typeof outputs !== "object" || outputs === null) return undefined;
 
+  const candidates: LyzrNodeOutputItem[] = [];
   for (const branches of Object.values(outputs)) {
     if (typeof branches !== "object" || branches === null) continue;
     for (const items of Object.values(branches)) {
@@ -84,10 +94,15 @@ function findTerminalItem(
           typeof item.status === "string" &&
           TERMINAL_ITEM_STATUSES.has(item.status)
         ) {
-          return item;
+          candidates.push(item);
         }
       }
     }
+  }
+
+  for (const status of TERMINAL_STATUS_PRECEDENCE) {
+    const match = candidates.find((item) => item.status === status);
+    if (match) return match;
   }
   return undefined;
 }
@@ -125,8 +140,8 @@ export function mapExecutionToPublicStatus(
   switch (item.status) {
     case "answered": {
       const message =
-        sanitizeText(item.message, Infinity) ??
-        sanitizeText(item.answer, Infinity);
+        sanitizeText(item.message, MAX_ANSWER_LENGTH) ??
+        sanitizeText(item.answer, MAX_ANSWER_LENGTH);
       if (!message) {
         throw new LyzrMalformedResponseError();
       }

@@ -30,13 +30,13 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe("LyzrClient.executeWorkflow", () => {
   it("posts the workflow payload with the API key header", async () => {
     const fetchImpl = vi.fn(async () =>
-      jsonResponse({ execution_id: "exec_1", status: "running" }),
+      jsonResponse({ execution_id: "exec_abc12345", status: "running" }),
     );
     const client = new LyzrClient({ config, fetchImpl });
 
     const ack = await client.executeWorkflow(input);
 
-    expect(ack).toEqual({ execution_id: "exec_1", status: "running" });
+    expect(ack).toEqual({ execution_id: "exec_abc12345", status: "running" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [
       string,
@@ -64,6 +64,39 @@ describe("LyzrClient.executeWorkflow", () => {
 
   it("throws LyzrMalformedResponseError when the ack is missing fields", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ status: "running" }));
+    const client = new LyzrClient({ config, fetchImpl });
+
+    await expect(client.executeWorkflow(input)).rejects.toBeInstanceOf(
+      LyzrMalformedResponseError,
+    );
+  });
+
+  it("throws LyzrMalformedResponseError when the ack execution ID is unsafe", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ execution_id: "../secrets\nx", status: "running" }),
+    );
+    const client = new LyzrClient({ config, fetchImpl });
+
+    await expect(client.executeWorkflow(input)).rejects.toBeInstanceOf(
+      LyzrMalformedResponseError,
+    );
+  });
+
+  it("throws LyzrMalformedResponseError when the ack execution ID is too long", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ execution_id: "a".repeat(129), status: "running" }),
+    );
+    const client = new LyzrClient({ config, fetchImpl });
+
+    await expect(client.executeWorkflow(input)).rejects.toBeInstanceOf(
+      LyzrMalformedResponseError,
+    );
+  });
+
+  it("throws LyzrMalformedResponseError on unexpected ack statuses", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ execution_id: "exec_abc12345", status: "exploded" }),
+    );
     const client = new LyzrClient({ config, fetchImpl });
 
     await expect(client.executeWorkflow(input)).rejects.toBeInstanceOf(

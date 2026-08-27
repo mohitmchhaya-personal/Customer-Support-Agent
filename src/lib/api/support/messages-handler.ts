@@ -7,7 +7,7 @@ import {
   LyzrUpstreamError,
 } from "@/lib/lyzr/errors";
 import type { SubmitMessageResponse } from "@/lib/support/api-contract";
-import { generateTicketId } from "@/lib/support/ticket";
+import { deriveTicketId } from "@/lib/support/ticket";
 import {
   MAX_REQUEST_BODY_BYTES,
   parseSubmitMessageRequest,
@@ -15,7 +15,7 @@ import {
 
 export interface MessagesRouteDeps {
   getClient?: () => LyzrClient;
-  generateTicketId?: () => string;
+  deriveTicketId?: (sessionId: string) => string;
 }
 
 function errorResponse(status: number, error: string) {
@@ -29,7 +29,7 @@ function errorResponse(status: number, error: string) {
  */
 export function createMessagesHandler(deps: MessagesRouteDeps = {}) {
   const getClient = deps.getClient ?? (() => new LyzrClient());
-  const newTicketId = deps.generateTicketId ?? generateTicketId;
+  const ticketIdForSession = deps.deriveTicketId ?? deriveTicketId;
 
   return async function POST(request: Request): Promise<NextResponse> {
     const contentType = request.headers.get("content-type") ?? "";
@@ -60,7 +60,13 @@ export function createMessagesHandler(deps: MessagesRouteDeps = {}) {
       return errorResponse(400, parsed.error);
     }
 
-    const ticketId = parsed.value.ticketId ?? newTicketId();
+    const ticketId = ticketIdForSession(parsed.value.sessionId);
+    if (
+      parsed.value.ticketId !== undefined &&
+      parsed.value.ticketId !== ticketId
+    ) {
+      return errorResponse(400, "Ticket identifier is not valid.");
+    }
 
     const input: LyzrWorkflowInput = {
       message: parsed.value.message,

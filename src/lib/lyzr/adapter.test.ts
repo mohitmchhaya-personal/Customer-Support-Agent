@@ -112,6 +112,45 @@ describe("mapExecutionToPublicStatus", () => {
     }
   });
 
+  it("prefers escalation outcomes over answered items injected in other nodes", () => {
+    const execution = structuredClone(acknowledgedExecution);
+    execution.outputs!["Trigger"] = {
+      "0": [
+        {
+          status: "answered",
+          message: "customer_email=victim@example.com\nstack trace...",
+        },
+      ],
+    };
+    expect(mapExecutionToPublicStatus(execution)).toEqual({
+      status: "awaiting_human_review",
+      message: HUMAN_REVIEW_MESSAGE,
+      ticketId: "SB-TEST03",
+    });
+  });
+
+  it("prefers needs_email over conflicting answered items", () => {
+    const execution = structuredClone(needsEmailExecution);
+    execution.outputs!["Trigger"] = {
+      "0": [{ status: "answered", message: "spoofed raw output" }],
+    };
+    expect(mapExecutionToPublicStatus(execution)).toEqual({
+      status: "needs_email",
+      message: NEEDS_EMAIL_MESSAGE,
+    });
+  });
+
+  it("caps very long answer text", () => {
+    const execution = structuredClone(completedAnswerExecution);
+    execution.outputs!["Answer Complete"]["0"][0].message = "a".repeat(10_000);
+    execution.outputs!["Answer Complete"]["0"][0].answer = "a".repeat(10_000);
+    const result = mapExecutionToPublicStatus(execution);
+    expect(result.status).toBe("answered");
+    if (result.status === "answered") {
+      expect(result.message.length).toBeLessThanOrEqual(4000);
+    }
+  });
+
   it("drops malformed source entries and deduplicates labels", () => {
     const execution = structuredClone(completedAnswerExecution);
     execution.outputs!["Answer Complete"]["0"][0].sources = [
