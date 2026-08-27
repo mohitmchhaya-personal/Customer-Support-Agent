@@ -5,6 +5,7 @@ import {
   receiveError,
   receiveReply,
   resetConversation,
+  retryQuestion,
   submitEmail,
   submitQuestion,
 } from "./conversation";
@@ -91,6 +92,20 @@ describe("conversation state transitions", () => {
     );
     const retried = submitQuestion(failed, "network problem");
     expect(retried.messages.some((m) => m.kind === "error")).toBe(false);
+  });
+
+  it("retries a failed question without duplicating the customer message", () => {
+    const failed = receiveError(
+      submitQuestion(initialState(), "network problem"),
+      "network problem",
+    );
+    const retried = retryQuestion(failed);
+    expect(retried.status).toBe("processing");
+    expect(retried.messages.filter((m) => m.role === "customer")).toHaveLength(
+      1,
+    );
+    expect(retried.messages.some((m) => m.kind === "error")).toBe(false);
+    expect(retried.messages.at(-1)).toMatchObject({ kind: "typing" });
   });
 
   it("moves to awaiting_human_review after email submission", () => {

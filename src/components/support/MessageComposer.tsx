@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { SendIcon } from "./icons";
 
 export const MAX_MESSAGE_LENGTH = 1000;
@@ -16,6 +17,15 @@ export function MessageComposer({
   disabled: boolean;
 }) {
   const canSend = value.trim().length > 0 && !disabled;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
   return (
     <div className="flex items-end gap-3 border-t border-line bg-canvas/50 p-4">
       <label htmlFor="composer" className="sr-only">
@@ -23,6 +33,7 @@ export function MessageComposer({
       </label>
       <textarea
         id="composer"
+        ref={textareaRef}
         rows={1}
         value={value}
         maxLength={MAX_MESSAGE_LENGTH}

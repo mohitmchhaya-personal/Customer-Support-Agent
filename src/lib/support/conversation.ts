@@ -47,6 +47,19 @@ export function submitQuestion(
   };
 }
 
+export function retryQuestion(state: ConversationState): ConversationState {
+  if (state.status === "processing") return state;
+  return {
+    status: "processing",
+    messages: [
+      ...state.messages.filter(
+        (m) => m.kind !== "error" && m.kind !== "typing",
+      ),
+      { id: createId(), role: "support", kind: "typing" },
+    ],
+  };
+}
+
 export function receiveReply(
   state: ConversationState,
   reply: SupportReply,

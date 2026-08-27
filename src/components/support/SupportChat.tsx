@@ -8,6 +8,7 @@ import {
   receiveError,
   receiveReply,
   resetConversation,
+  retryQuestion,
   submitEmail,
   submitQuestion,
 } from "@/lib/support/conversation";
@@ -31,11 +32,13 @@ export function SupportChat({
   const [state, setState] = useState<ConversationState>(initialState);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const conversationEpoch = useRef(0);
 
   const busy = state.status === "processing";
   const hasCustomerMessage = state.messages.some((m) => m.role === "customer");
   const showSuggestions = !hasCustomerMessage && !busy;
-  const showAskAnother = state.messages.some((m) => m.kind === "escalation");
+  const showAskAnother =
+    !busy && state.messages.some((m) => m.kind === "escalation");
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -44,17 +47,22 @@ export function SupportChat({
     }
   }, [state.messages]);
 
-  async function send(raw: string) {
+  async function send(raw: string, { isRetry = false } = {}) {
     const text = raw.trim();
     if (!text || busy) return;
 
+    const epoch = conversationEpoch.current;
     setInput("");
-    setState((prev) => submitQuestion(prev, text));
+    setState((prev) =>
+      isRetry ? retryQuestion(prev) : submitQuestion(prev, text),
+    );
 
     try {
       const reply = await service.submitMessage(text);
+      if (epoch !== conversationEpoch.current) return;
       setState((prev) => receiveReply(prev, reply));
     } catch {
+      if (epoch !== conversationEpoch.current) return;
       setState((prev) => receiveError(prev, text));
     }
   }
@@ -68,6 +76,7 @@ export function SupportChat({
   }
 
   function reset() {
+    conversationEpoch.current += 1;
     setState(resetConversation());
     setInput("");
   }
@@ -110,7 +119,12 @@ export function SupportChat({
               />
             );
           if (m.kind === "error")
-            return <ErrorMessage key={m.id} onRetry={() => send(m.retry)} />;
+            return (
+              <ErrorMessage
+                key={m.id}
+                onRetry={() => send(m.retry, { isRetry: true })}
+              />
+            );
           return null;
         })}
 

@@ -19,7 +19,7 @@ export function EscalationCard({
       <dl className="divide-y divide-line/70 px-4 text-[13.5px]">
         <div className="flex items-center justify-between py-2.5">
           <dt className="text-muted">Status</dt>
-          <dd className="inline-flex items-center gap-1.5 font-semibold text-gold">
+          <dd className="inline-flex items-center gap-1.5 font-semibold text-gold-strong">
             <ClockIcon className="h-3.5 w-3.5" />
             Awaiting support review
           </dd>

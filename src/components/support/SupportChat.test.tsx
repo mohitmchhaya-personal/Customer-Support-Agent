@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { MockSupportService } from "@/lib/support/service";
+import { MockSupportService, type SupportService } from "@/lib/support/service";
+import type { SupportReply } from "@/lib/support/types";
 import { SupportChat } from "./SupportChat";
 
 const service = new MockSupportService(0);
@@ -114,5 +115,64 @@ describe("SupportChat", () => {
       ).toBeInTheDocument(),
     );
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("does not duplicate the customer message on retry", async () => {
+    const user = setup();
+    await user.type(
+      screen.getByLabelText(/type your question/i),
+      "my network is offline{Enter}",
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/we couldn't submit your question right now/i),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/we couldn't submit your question right now/i),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getAllByText("my network is offline")).toHaveLength(1);
+  });
+
+  it("hides Ask another question while a new message is processing", async () => {
+    const pending: Array<(reply: SupportReply) => void> = [];
+    const manual: SupportService = {
+      submitMessage: () =>
+        new Promise<SupportReply>((resolve) => pending.push(resolve)),
+    };
+    const user = userEvent.setup();
+    render(<SupportChat service={manual} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "I'm having a technical issue" }),
+    );
+    pending.shift()!({ kind: "escalate", text: "Needs human review." });
+    const emailInput = await screen.findByLabelText(/email address/i);
+    await user.type(emailInput, "user@example.org");
+    await user.click(screen.getByRole("button", { name: /send to support/i }));
+    expect(
+      screen.getByRole("button", { name: /ask another question/i }),
+    ).toBeInTheDocument();
+
+    await user.type(
+      screen.getByLabelText(/type your question/i),
+      "How do I manage my account?{Enter}",
+    );
+    expect(
+      screen.queryByRole("button", { name: /ask another question/i }),
+    ).not.toBeInTheDocument();
+
+    pending.shift()!({
+      kind: "grounded",
+      text: "Here is how.",
+      source: "SpreadBliss Help Center · Account Settings",
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/based on:/i)).toBeInTheDocument(),
+    );
   });
 });

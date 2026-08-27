@@ -19,13 +19,14 @@ export function PageHeader() {
             Help Center
           </span>
         </div>
-        <span
-          aria-disabled="true"
+        <button
+          type="button"
+          disabled
           className="inline-flex cursor-default items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13.5px] font-semibold text-brand"
         >
           <ArrowIcon className="h-4 w-4" />
           Back to SpreadBliss
-        </span>
+        </button>
       </div>
     </header>
   );

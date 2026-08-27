@@ -13,6 +13,7 @@
   --sb-blue-strong: #1d4ed8;
   --sb-blue-soft: #e7edfd;
   --sb-gold-soft: #f2ead9;
+  --sb-gold-strong: #8a6d3b;
 
   --background: var(--sb-white);
   --foreground: var(--sb-ink);
@@ -34,6 +35,7 @@
   --color-brand-soft: var(--sb-blue-soft);
   --color-gold: var(--sb-gold);
   --color-gold-soft: var(--sb-gold-soft);
+  --color-gold-strong: var(--sb-gold-strong);
   --font-sans: var(--font-inter);
 }
 
