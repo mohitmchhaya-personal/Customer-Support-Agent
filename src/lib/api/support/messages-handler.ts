@@ -7,7 +7,8 @@ import {
   LyzrUpstreamError,
 } from "@/lib/lyzr/errors";
 import type { SubmitMessageResponse } from "@/lib/support/api-contract";
-import { deriveTicketId } from "@/lib/support/ticket";
+import { getLyzrConfig } from "@/lib/lyzr/config";
+import { generateTicketId, verifyTicketId } from "@/lib/support/ticket";
 import {
   MAX_REQUEST_BODY_BYTES,
   parseSubmitMessageRequest,
@@ -15,7 +16,8 @@ import {
 
 export interface MessagesRouteDeps {
   getClient?: () => LyzrClient;
-  deriveTicketId?: (sessionId: string) => string;
+  generateTicketId?: (sessionId: string) => string;
+  verifyTicketId?: (ticketId: string, sessionId: string) => boolean;
 }
 
 function errorResponse(status: number, error: string) {
@@ -29,7 +31,13 @@ function errorResponse(status: number, error: string) {
  */
 export function createMessagesHandler(deps: MessagesRouteDeps = {}) {
   const getClient = deps.getClient ?? (() => new LyzrClient());
-  const ticketIdForSession = deps.deriveTicketId ?? deriveTicketId;
+  const newTicketId =
+    deps.generateTicketId ??
+    ((sessionId: string) => generateTicketId(sessionId, getLyzrConfig().apiKey));
+  const isSessionTicket =
+    deps.verifyTicketId ??
+    ((ticketId: string, sessionId: string) =>
+      verifyTicketId(ticketId, sessionId, getLyzrConfig().apiKey));
 
   return async function POST(request: Request): Promise<NextResponse> {
     const contentType = request.headers.get("content-type") ?? "";
@@ -60,27 +68,29 @@ export function createMessagesHandler(deps: MessagesRouteDeps = {}) {
       return errorResponse(400, parsed.error);
     }
 
-    const ticketId = ticketIdForSession(parsed.value.sessionId);
-    if (
-      parsed.value.ticketId !== undefined &&
-      parsed.value.ticketId !== ticketId
-    ) {
-      return errorResponse(400, "Ticket identifier is not valid.");
-    }
-
-    const input: LyzrWorkflowInput = {
-      message: parsed.value.message,
-      session_id: parsed.value.sessionId,
-      ticket_id: ticketId,
-    };
-    if (parsed.value.customerName !== undefined) {
-      input.customer_name = parsed.value.customerName;
-    }
-    if (parsed.value.customerEmail !== undefined) {
-      input.customer_email = parsed.value.customerEmail;
-    }
-
     try {
+      let ticketId: string;
+      if (parsed.value.ticketId !== undefined) {
+        if (!isSessionTicket(parsed.value.ticketId, parsed.value.sessionId)) {
+          return errorResponse(400, "Ticket identifier is not valid.");
+        }
+        ticketId = parsed.value.ticketId;
+      } else {
+        ticketId = newTicketId(parsed.value.sessionId);
+      }
+
+      const input: LyzrWorkflowInput = {
+        message: parsed.value.message,
+        session_id: parsed.value.sessionId,
+        ticket_id: ticketId,
+      };
+      if (parsed.value.customerName !== undefined) {
+        input.customer_name = parsed.value.customerName;
+      }
+      if (parsed.value.customerEmail !== undefined) {
+        input.customer_email = parsed.value.customerEmail;
+      }
+
       const ack = await getClient().executeWorkflow(input);
       const response: SubmitMessageResponse = {
         status: "processing",

@@ -6,8 +6,17 @@ import {
   LyzrTimeoutError,
   LyzrUpstreamError,
 } from "@/lib/lyzr/errors";
-import { deriveTicketId } from "@/lib/support/ticket";
+import { generateTicketId, verifyTicketId } from "@/lib/support/ticket";
 import { createMessagesHandler } from "./messages-handler";
+
+const TICKET_SECRET = "test-ticket-secret";
+
+const ticketDeps = {
+  generateTicketId: (sessionId: string) =>
+    generateTicketId(sessionId, TICKET_SECRET),
+  verifyTicketId: (ticketId: string, sessionId: string) =>
+    verifyTicketId(ticketId, sessionId, TICKET_SECRET),
+};
 
 function makeRequest(
   body: unknown,
@@ -39,7 +48,8 @@ describe("POST /api/support/messages", () => {
     }));
     const handler = createMessagesHandler({
       getClient: fakeClient(executeWorkflow),
-      deriveTicketId: () => "SB-FIXED123",
+      ...ticketDeps,
+      generateTicketId: () => "SB-FIXED123",
     });
 
     const response = await handler(makeRequest(validBody));
@@ -57,14 +67,15 @@ describe("POST /api/support/messages", () => {
     });
   });
 
-  it("accepts a supplied ticket ID matching the session and maps optional fields", async () => {
+  it("accepts a supplied ticket ID issued for the session and maps optional fields", async () => {
     const executeWorkflow = vi.fn(async () => ({
       execution_id: "exec_abc12345",
       status: "running",
     }));
-    const sessionTicket = deriveTicketId("sess_123");
+    const sessionTicket = generateTicketId("sess_123", TICKET_SECRET);
     const handler = createMessagesHandler({
       getClient: fakeClient(executeWorkflow),
+      ...ticketDeps,
     });
 
     const response = await handler(
@@ -91,10 +102,11 @@ describe("POST /api/support/messages", () => {
     const executeWorkflow = vi.fn();
     const handler = createMessagesHandler({
       getClient: fakeClient(executeWorkflow),
+      ...ticketDeps,
     });
 
     const response = await handler(
-      makeRequest({ ...validBody, ticketId: "SB-FORGED99" }),
+      makeRequest({ ...validBody, ticketId: "SB-FORGED99AA" }),
     );
 
     expect(response.status).toBe(400);
@@ -104,21 +116,23 @@ describe("POST /api/support/messages", () => {
     expect(executeWorkflow).not.toHaveBeenCalled();
   });
 
-  it("always uses the session-derived ticket ID for initial submissions", async () => {
+  it("generates a session-verifiable ticket ID for initial submissions", async () => {
     const executeWorkflow = vi.fn(async () => ({
       execution_id: "exec_abc12345",
       status: "running",
     }));
     const handler = createMessagesHandler({
       getClient: fakeClient(executeWorkflow),
+      ...ticketDeps,
     });
 
     const response = await handler(makeRequest(validBody));
 
     expect(response.status).toBe(202);
-    expect(await response.json()).toMatchObject({
-      ticketId: deriveTicketId("sess_123"),
-    });
+    const body = (await response.json()) as { ticketId: string };
+    expect(verifyTicketId(body.ticketId, "sess_123", TICKET_SECRET)).toBe(
+      true,
+    );
   });
 
   it("rejects non-JSON content types with 415", async () => {
@@ -170,6 +184,7 @@ describe("POST /api/support/messages", () => {
 
   it("maps upstream timeouts to 504", async () => {
     const handler = createMessagesHandler({
+      ...ticketDeps,
       getClient: fakeClient(
         vi.fn(async () => {
           throw new LyzrTimeoutError();
@@ -186,6 +201,7 @@ describe("POST /api/support/messages", () => {
 
   it("maps upstream failures to 502 without leaking details", async () => {
     const handler = createMessagesHandler({
+      ...ticketDeps,
       getClient: fakeClient(
         vi.fn(async () => {
           throw new LyzrUpstreamError(500);
@@ -203,6 +219,7 @@ describe("POST /api/support/messages", () => {
 
   it("maps malformed upstream responses to 502", async () => {
     const handler = createMessagesHandler({
+      ...ticketDeps,
       getClient: fakeClient(
         vi.fn(async () => {
           throw new LyzrMalformedResponseError();
@@ -217,6 +234,7 @@ describe("POST /api/support/messages", () => {
 
   it("maps unexpected errors to 500 without leaking details", async () => {
     const handler = createMessagesHandler({
+      ...ticketDeps,
       getClient: fakeClient(
         vi.fn(async () => {
           throw new Error("secret internal detail");
