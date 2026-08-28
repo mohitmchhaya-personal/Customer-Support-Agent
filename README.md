@@ -4,6 +4,34 @@ Standalone proof of concept for the SpreadBliss Help & Contact page: a customer-
 
 **Live deployment (Vercel):** https://customer-support-agent-sand.vercel.app
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Browser
+        UI["Help & Contact page (/help)<br/>Support Chat UI"]
+    end
+
+    subgraph Vercel["Next.js app (Vercel)"]
+        MSG["POST /api/support/messages<br/>validate + ticket ID"]
+        EXE["GET /api/support/executions/:id<br/>status polling"]
+        LYZR["Server-only Lyzr layer<br/>client + adapter"]
+    end
+
+    subgraph Lyzr["Lyzr SuperFlows"]
+        CHAT["Chat Response SuperFlow<br/>(grounded answers)"]
+        HR["Human Review SuperFlow<br/>(async escalation)"]
+    end
+
+    UI -- "submit question" --> MSG
+    UI -- "poll status" --> EXE
+    MSG --> LYZR
+    EXE --> LYZR
+    LYZR -- "execute / get execution" --> CHAT
+    CHAT -. "needs review (fire-and-forget)" .-> HR
+    HR -- "reviewed answer via email" --> Customer(["Customer email"])
+```
+
 ## How It Works
 
 1. The `/help` page submits customer questions to `POST /api/support/messages`, which triggers the Lyzr Chat Response SuperFlow server-side and returns `202` with a `ticketId` and `executionId`.
